@@ -6,53 +6,75 @@
 # - Check current branch & commit hash
 #   This lets us display which version of the code is running
 ###################################################
-import subprocess, os
+import time
+import threading
+import json
+import subprocess
+import os
 
-# Change to the directory of your Git repository
-# NOTE: this means, in order to run the app, you have to use the full path to the app.py file
-# e.g. sudo python /home/pi/CamTest/wifi_portal/app.py
+from flask import Flask, request, render_template, jsonify, url_for
 
-POETRY_CAMERA_DIRECTORY = '/home/carolynz/CamTest/'
-
-try:
-    os.chdir(POETRY_CAMERA_DIRECTORY)
-except Exception as e:
-    print(f"Failed to change directory: {e}")
+POETRY_CAMERA_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__name__)))
 
 
 # Get the git commit hash to display on portal -- for beta/debugging
 def get_git_revision_hash():
     try:
-	# get truncated commit hasn (--short)
-        return subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip().decode('utf-8')
+        # get truncated commit hasn (--short)
+        return (
+            subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+            .strip()
+            .decode("utf-8")
+        )
     except Exception as e:
         print(f"Failed to get commit hash: {e}")
         return str(e)
 
+
 # get branch name
+
+
 def get_git_branch_name():
     try:
-        return subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode('utf-8')
+        return (
+            subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            .strip()
+            .decode("utf-8")
+        )
     except Exception as e:
         print(f"Failed to get branch name: {e}")
         return str(e)
 
+
 # Get the date of the latest commit
+
+
 def get_git_commit_date():
     try:
-        return subprocess.check_output(['git', 'log', '-1', '--format=%cd', '--date=short']).strip().decode('utf-8')
+        return (
+            subprocess.check_output(
+                ["git", "log", "-1", "--format=%cd", "--date=short"]
+            )
+            .strip()
+            .decode("utf-8")
+        )
     except Exception as e:
         print(f"Failed to get commit date: {e}")
         return str(e)
 
+
 commit_hash = get_git_revision_hash()
 branch_name = get_git_branch_name()
 commit_date = get_git_commit_date()
-version_info = f"System last updated: {commit_date}\nVersion: {commit_hash}\nBranch: {branch_name}"
+version_info = f"""System last updated: {commit_date}\nVersion: {
+    commit_hash}\nBranch: {branch_name}"""
 
-# Save the commit hash to a file
-SOFTWARE_VERSION_FILE_PATH = POETRY_CAMERA_DIRECTORY + 'wifi_portal/current_version.txt'
-with open(SOFTWARE_VERSION_FILE_PATH, 'w') as version_file:
+# Save the commit hash to a file (current directory, named current_version.txt)
+SOFTWARE_VERSION_FILE_PATH = (
+    POETRY_CAMERA_DIRECTORY + "/wifi_portal/current_version.txt"
+)
+
+with open(SOFTWARE_VERSION_FILE_PATH, "w") as version_file:
     version_file.write(version_info)
 
 #######################################################
@@ -63,8 +85,6 @@ with open(SOFTWARE_VERSION_FILE_PATH, 'w') as version_file:
 # Once you're connected to PoetryCameraSetup wifi, it should pop up automatically
 # If not, navigate to poetrycamera.local in your browser
 #######################################################
-import json, threading, time
-from flask import Flask, request, render_template, jsonify, url_for
 app = Flask(__name__)
 
 # WIFI_DEVICE specifies internet client (requires separate wifi adapter)
@@ -73,51 +93,80 @@ app = Flask(__name__)
 WIFI_DEVICE = "wlan1"
 
 
-config_file = POETRY_CAMERA_DIRECTORY + "wifi_portal/hotspot_config.json"
+# load/save for footer text
+
+device_settings_file = POETRY_CAMERA_DIRECTORY + "/device_settings.json"
+
+
+def get_stored_footer():
+    try:
+        with open(device_settings_file, "r") as f:
+            return json.load(f).get("footer", None)
+    except FileNotFoundError:
+        return {}
+
+
+def save_footer(footer):
+    device_settings = {"footer": footer}
+    try:
+        with open(device_settings_file, "w") as f:
+            json.dump(device_settings, f)
+        return {"status": "success", "message": "Footer saved."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error saving footer: {e}"}
+
+
+config_file = POETRY_CAMERA_DIRECTORY + "/wifi_portal/hotspot_config.json"
 
 
 # get code version info we checked upon startup
+
+
 def get_stored_version():
     try:
-        with open(SOFTWARE_VERSION_FILE_PATH, 'r') as version_file:
+        with open(SOFTWARE_VERSION_FILE_PATH, "r") as version_file:
             return version_file.read().strip()
     except Exception as e:
-        return 'Version: unknown\nBranch: unknown'
+        return "Version: unknown\nBranch: unknown"
+
 
 # Function to load hotspot configuration
+
+
 def load_hotspot_config():
     try:
-        with open(config_file, 'r') as f:
+        with open(config_file, "r") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}
 
+
 # Function to save hotspot configuration
-def save_hotspot_config(ssid, password = None):
+
+
+def save_hotspot_config(ssid, password=None):
     if password:
-        config = {
-            "ssid": ssid,
-            "password": password
-        }
+        config = {"ssid": ssid, "password": password}
     else:
-        config = {
-            "ssid": ssid
-        }
-    with open(config_file, 'w') as f:
+        config = {"ssid": ssid}
+    with open(config_file, "w") as f:
         json.dump(config, f)
 
+
 # Get current network status
+
+
 def get_network_status():
     internet_status = "offline"
     ssid = ""
-    
+
     try:
         # Retrieve the SSID
         ssid_result = subprocess.run(
-            ['nmcli', '-t', '-f', 'device,active,ssid', 'device', 'wifi'], 
-            capture_output=True
+            ["nmcli", "-t", "-f", "device,active,ssid", "device", "wifi"],
+            capture_output=True,
         )
-        ssid_output = ssid_result.stdout.decode().strip().split('\n')
+        ssid_output = ssid_result.stdout.decode().strip().split("\n")
         for line in ssid_output:
             if line.startswith(f"{WIFI_DEVICE}:yes:"):
                 ssid = line.split(":")[2]
@@ -125,17 +174,17 @@ def get_network_status():
                 break
     except Exception as e:
         print(f"Exception in get_network_status: {e}")
-    
+
     return internet_status, ssid
 
 
 # Function to attempt connecting to the saved hotspot
-def attempt_connect_hotspot(ssid, password = None):
+def attempt_connect_hotspot(ssid, password=None):
     """
     config = load_hotspot_config()
     if not config:
         return "No hotspot configuration found."
-    
+
     ssid = config.get("ssid")
     password = config.get("password")
     """
@@ -150,16 +199,36 @@ def attempt_connect_hotspot(ssid, password = None):
         return f"Success: {result.stdout.decode()}"
     return "Unknown error."
 
+
 # screen where you set wifi password
-@app.route('/')
+
+
+@app.route("/")
 def index():
     try:
-	# get list of wifi networks nearby
-        result = subprocess.check_output(["nmcli", "--colors", "no", "-m", "multiline", "--get-value", "SSID", "dev", "wifi", "list", "ifname", WIFI_DEVICE])
-        ssids_list = result.decode().split('\n')
+        # get list of wifi networks nearby
+        result = subprocess.check_output(
+            [
+                "nmcli",
+                "--colors",
+                "no",
+                "-m",
+                "multiline",
+                "--get-value",
+                "SSID",
+                "dev",
+                "wifi",
+                "list",
+                "ifname",
+                WIFI_DEVICE,
+            ]
+        )
+        ssids_list = result.decode().split("\n")
     except subprocess.CalledProcessError as e:
-        return f"Error: Unable to retrieve WiFi networks. Likely a wifi adapter issue. {e}"
-    
+        return (
+            f"Error: Unable to retrieve WiFi networks. Likely a wifi adapter issue. {e}"
+        )
+
     # Remove 'PoetryCameraSetup' from the list, that's the camera's own wifi network
     # And remove the prefix "SSID:" from networks in the list
     # (We expect the ssids_list to look like: ["SSID:network1", "SSID:network2", "SSID:PoetryCameraSetup", ...])
@@ -173,37 +242,60 @@ def index():
 
     # Network connectivity icons
     # Pass URLs for static files to the template
-    online_icon = url_for('static', filename='icon/wifi-online.svg')
-    offline_icon = url_for('static', filename='icon/wifi-offline.svg')
-    loading_icon = url_for('static', filename='icon/loading.svg')
-    refresh_icon = url_for('static', filename='icon/refresh.svg')
+    online_icon = url_for("static", filename="icon/wifi-online.svg")
+    offline_icon = url_for("static", filename="icon/wifi-offline.svg")
+    loading_icon = url_for("static", filename="icon/loading.svg")
+    refresh_icon = url_for("static", filename="icon/refresh.svg")
 
-    return render_template('index.html',
-      ssids_list=unique_ssids_list,
-      version=version_info,
-      internet_status=internet_status,
-      ssid=ssid,
-      online_icon=online_icon,
-      offline_icon=offline_icon,
-      loading_icon=loading_icon,
-      refresh_icon=refresh_icon
+    # Load footer text
+    footer = get_stored_footer()
+
+    return render_template(
+        "index.html",
+        ssids_list=unique_ssids_list,
+        version=version_info,
+        internet_status=internet_status,
+        ssid=ssid,
+        online_icon=online_icon,
+        offline_icon=offline_icon,
+        loading_icon=loading_icon,
+        refresh_icon=refresh_icon,
+        footer=footer,
     )
 
 
-@app.route('/submit', methods=['POST'])
+def hotspot_scanning(ssid, password):
+    end_time = time.time() + 120  # Run for 2 minutes
+    while time.time() < end_time:
+        result = attempt_connect_hotspot(ssid, password)
+        # Log the result, can be changed to more sophisticated logging
+        print(result)
+        if "Success" in result:
+            break
+        time.sleep(5)
+
+
+@app.route("/submit", methods=["POST"])
 def submit():
-    ssid = request.form['ssid']
-    password = request.form['password']
-    connection_command = ["nmcli", "--colors", "no", "device", "wifi", "connect", ssid, "ifname", WIFI_DEVICE]
-    if len(password) > 0:
-        connection_command.append("password")
-        connection_command.append(password)
-    result = subprocess.run(connection_command, capture_output=True)
-    
-    # default response data json that we will modify based on the results of connection_command
+    ssid = request.form["ssid"]
+    password = request.form["password"]
+    manual_connect = request.form.get("manual_connect")
+
+    if manual_connect:
+        save_hotspot_config(ssid, password)
+        threading.Thread(target=hotspot_scanning, args=(ssid, password)).start()
+        return jsonify(
+            {
+                "status": "info",
+                "message": f"Attempting to connect to the {ssid} network. If you are using a hotspot, go to your hotspot settings page and leave it open so it can connect. This could take up to 2 minutes.",
+            }
+        )
+
+    result = attempt_connect_hotspot(ssid, password)
+
     response_data = {
         "status": "error",
-        "message": "Could not connect. Please try again."
+        "message": "Could not connect. Please try again.",
     }
 
     if result.stderr:
@@ -220,56 +312,85 @@ def submit():
         elif "connection activation failed" in stdout_message:
             response_data["message"] = "Connection activation failed."
         elif "no network with ssid" in stdout_message:
-            response_data["message"] = "Could not find a wifi network with the specified SSID."
+            response_data["message"] = (
+                "Could not find a wifi network with the specified SSID."
+            )
         elif "no valid secrets" in stdout_message:
             response_data["message"] = "Wrong password"
         elif "no suitable device found" in stdout_message:
             response_data["message"] = "Could not connect. Possible hardware issue."
         elif "device not ready" in stdout_message:
-            # TODO: just retry the command like 3 more times
             response_data["message"] = "The device is not ready."
         elif "invalid password" in stdout_message:
             response_data["message"] = "Wrong password"
         elif "could not be found or the password is incorrect" in stdout_message:
-            response_data["message"] = "The password is incorrect or the network could not be found."
+            response_data["message"] = (
+                "The password is incorrect or the network could not be found."
+            )
         else:
             response_data["message"] = result.stdout.decode()
 
-    # get current network status (device may still be online even if the connection to new network failed)
     internet_status, ssid = get_network_status()
     response_data["internet_status"] = internet_status
     response_data["ssid"] = ssid
 
     return jsonify(response_data)
 
-# manually-entered SSIDs
-# This keeps trying to reconnect to the hotspot for 2 minutes
-# because the user may have entered their own cell phone hotspot info while it's not active yet\
-@app.route('/save_and_connect', methods=['POST'])
-def save_and_connect():
-    manual_ssid = request.form['manual_ssid']
-    manual_password = request.form['manual_password']
-    save_hotspot_config(manual_ssid, manual_password)
-    
-    def hotspot_scanning():
-        end_time = time.time() + 120  # Run for 2 minutes
-        while time.time() < end_time:
-            result = attempt_connect_hotspot(manual_ssid, manual_password)
-            print(result)  # Log the result, can be changed to more sophisticated logging
-            if "Success" in result:
-                break
-            time.sleep(5)
-    
-    threading.Thread(target=hotspot_scanning).start()
-    return f"Attempting to connect to the {manual_ssid} network. If you are using a hotspot, go to your hotspot settings page and leave it open so it can connect. This could take up to 2 minutes."
-
 
 # check for connectivity status
-@app.route('/status')
+@app.route("/status")
 def status():
     internet_status, ssid = get_network_status()
     return jsonify({"status": internet_status, "ssid": ssid})
 
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=80)
+# footer text
+@app.route("/footer", methods=["POST"])
+def footer():
+    footer = request.form["footer"]
+    res = save_footer(footer)
+    return jsonify(res)
+
+
+LOG_FILE_PATH = POETRY_CAMERA_DIRECTORY + "/errors.txt"
+
+
+def get_logs():
+    logs = []
+    try:
+        with open(LOG_FILE_PATH, "r", encoding="utf-8") as f:
+            logs = f.readlines()
+    except FileNotFoundError:
+        pass
+    return logs
+
+
+@app.route("/log")
+def logs():
+    logs = get_logs()
+
+    return render_template("logs.html", logs=logs, type="Camera")
+
+
+PORTAL_LOG_FILE_PATH = POETRY_CAMERA_DIRECTORY + "/wifi_portal/errors.txt"
+
+
+def get_portal_logs():
+    logs = []
+    try:
+        with open(PORTAL_LOG_FILE_PATH, "r", encoding="utf-8") as f:
+            logs = f.readlines()
+    except FileNotFoundError:
+        pass
+    return logs
+
+
+@app.route("/log/portal")
+def portal_logs():
+    logs = get_portal_logs()
+
+    return render_template("logs.html", logs=logs, type="WiFiPortal")
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=80)

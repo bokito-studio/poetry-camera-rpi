@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <title>Poetry Camera Logs</title>
+  </head>
+  <body>
+    <div class="container">
+      <h1 class="title">Poetry Camera</h1>
+
+      <!-- current connection status -->
+      <div class="log-section">
+        <div class="section-header">
+          <div>
+            <h2>{{ type }} Logs</h2>
+            <p>(Last 250, newest at top)</p>
+          </div>
+          <div id="download-button">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+            >
+              <path
+                fill="currentColor"
+                d="m12 15.577l-3.539-3.538l.708-.72L11.5 13.65V5h1v8.65l2.33-2.33l.709.719zM6.616 19q-.691 0-1.153-.462T5 17.384v-2.423h1v2.423q0 .231.192.424t.423.192h10.77q.23 0 .423-.192t.192-.424v-2.423h1v2.423q0 .691-.462 1.153T17.384 19z"
+              />
+            </svg>
+          </div>
+        </div>
+        <div id="logs-section"></div>
+      </div>
+    </div>
+  </body>
+  <script>
+    const logs = `{{ logs | tojson }}`;
+  </script>
+  <script>
+    let plogs = JSON.parse(
+      logs
+        .replace(/\n|\t|""",/g, "")
+        .replace(/"(.*?)"/g, (_, p) => {
+          return '"' + p.replace(/"/g, '\\"') + '"';
+        })
+        // I am not smart enough to determine why the above regex isn't enough
+        .replace(/"GET.*?1.1"/g, (match) => match.replace(/"/g, '\\"'))
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) => {
+          return "\\u" + ("0000" + c.charCodeAt(0).toString(16)).slice(-4);
+        })
+    ).filter(Boolean);
+
+    // reverse the array so the newest logs are at the top
+    plogs.reverse();
+
+    // limit the number of logs to 250
+    plogs = plogs.slice(0, 250);
+
+    function ansiToHtml(log) {
+      // Regular expressions for ANSI escape codes
+      const ansiPattern = /\u001b\[(\d+)(;\d+)*m/g;
+      const ansiMap = {
+        0: "log-default", // Reset / Normal
+        1: "font-weight: bold", // Bold or increased intensity
+        33: "color: orange", // Yellow
+        34: "color: blue", // Blue
+        37: "color: white", // White
+        // Add more mappings as needed
+      };
+
+      return log
+        .replace(ansiPattern, (_, code) => {
+          const classes = code
+            .split(";")
+            .map((c) => ansiMap[c] || "")
+            .join(" ");
+          return `</span><span style="${classes}">`;
+        })
+        .replace(/^/, '<span class="log-default">')
+        .replace(/$/, "</span>");
+    }
+
+    function renderLogs() {
+      const logsSection = document.getElementById("logs-section");
+      plogs.forEach((log) => {
+        const p = document.createElement("p");
+        p.innerHTML = ansiToHtml(log);
+        logsSection.appendChild(p);
+      });
+    }
+
+    // Render logs on page load
+    renderLogs();
+  </script>
+  <script>
+    const type = "{{ type }}";
+    // Download logs button
+    const downloadButton = document.getElementById("download-button");
+    downloadButton.addEventListener("click", function () {
+      const data = new Blob([logs], { type: "text/plain" });
+      const url = URL.createObjectURL(data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `poetry-camera-${type}-logs.txt`;
+      link.click();
+    });
+  </script>
+</html>

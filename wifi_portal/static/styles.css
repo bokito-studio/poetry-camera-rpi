@@ -1,105 +1,235 @@
-/* Apply to all devices */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+* {
+  margin: 0;
+}
 body {
-  font-size: 1em;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+#root,
+#__next {
+  isolation: isolate;
+}
+
+/* End of CSS reset */
+
+/* This is a paid font, so we're not including it in the repo, but you can 
+ * purchase it here: https://verycoolstudio.com/typefaces/gooper */
+@font-face {
+  font-family: "Gooper SemiCondensed";
+  src: url("/static/fonts/GooperSemiCondensed7-SemiBold.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
   font-family: "Arial", sans-serif;
+  padding: 0;
+  background-color: #f4f4f4;
+  color: #333;
+}
+
+.container {
+  height: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5em;
+  padding: 1.5em;
+}
+
+h1,
+h2 {
+  color: #333;
+  text-align: center;
+  font-family: Arial, sans-serif;
+}
+
+.title {
+  font-family: "Gooper SemiCondensed";
+  color: #f00;
+}
+
+.log-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1), 5px 0 15px rgba(0, 0, 0, 0.1);
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1), 5px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.button-primary {
+  background-color: #ff0000;
+  color: white;
+}
+
+.button-secondary {
+  background-color: #ff0000;
+  color: white;
+}
+
+.loading {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.spin {
+  animation: spin 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  margin: 10px 0 5px;
 }
 
 input[type="text"],
 input[type="password"],
-select {
-  width: 100%;
-  max-width: 300px;
-  box-sizing: border-box;
+input[list] {
   padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  /* Remove default styling */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
-.button{
-  border-radius: 8px;
-  padding: 12px;
-  background-color: #fff;
-  color: #000;
-  border: 1px solid #d7d7d7;
+datalist {
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  /* Remove default styling */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
-.button:hover{
-  cursor: pointer;
+input[type="submit"] {
+  margin-top: 10px;
 }
 
-/* TODO: ADD HOVER STATES */
-
-.button-primary{
-  background-color: #000;
-  color: #fff;
-  border: 1px solid #000;
-}
-
-#refresh-status-button{
-  border-radius: 100%;
-  width: 44px;
-  height: 44px;
-}
-
-.section-header{
+#status-indicator {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  gap: 20px;
+  justify-content: center;
 }
 
-.section{
-  border-bottom: 1px solid #d7d7d7;
-  padding: 20px 0;
-  margin: 20px 0;
+#status-indicator img {
+  margin-top: 10px;
+  margin-right: 10px;
 }
 
-/* Apply to screens smaller than 600px (typical breakpoint for mobile devices) */
-@media only screen and (max-width: 600px) {
-  input[type="text"],
-  input[type="password"],
-  select {
-    width: 100%;
-  }
+#show-password {
+  margin-right: 5px;
 }
 
-# Wifi picker modal
-/* Modal styles */
-.modal {
-            display: none;
-            position: fixed;
-            z-index: 1;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.4);
-            padding-top: 60px;
-        }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 5% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-        }
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-        }
-        .close:hover,
-        .close:focus {
-            color: black;
-            text-decoration: none;
-            cursor: pointer;
-        }
-        .ssid {
-            cursor: pointer;
-            padding: 5px;
-        }
-        .ssid:hover {
-            background-color: #f0f0f0;
-            text-decoration: underline;
-        }
+#version-info {
+  text-align: center;
+}
 
+/* Add some basic styling for log messages */
+#logs-section {
+  overflow: auto;
+  height: 100%;
+}
+
+#logs-section p {
+  white-space: pre-wrap; /* Ensure logs keep their formatting */
+  margin: 0.5em 0;
+}
+
+#logs-section > p:nth-of-type(odd) {
+  background: #e0e0e0;
+}
+
+.log-warn {
+  color: orange;
+}
+.log-info {
+  color: blue;
+}
+.log-error {
+  color: red;
+}
+.log-default {
+  color: black;
+}
+
+#download-button {
+  margin-top: 0.25em;
+}
+
+#download-button:hover {
+  cursor: pointer;
+  color: red;
+}
