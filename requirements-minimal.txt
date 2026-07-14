@@ -1,0 +1,28 @@
+# Minimal requirements for Poetry Camera with Google Gemini API
+# Install with: pip3 install -r requirements-minimal.txt --break-system-packages
+
+# Core camera functionality
+picamera2
+
+# Google Gemini API
+google-generativeai
+
+# Environment variables (.env file support)
+python-dotenv
+
+# Image processing (required by Gemini API)
+Pillow
+
+# GPIO control (buttons and LED)
+gpiozero
+
+# HTTP requests (used internally by google-generativeai)
+requests
+
+# Optional: Enhanced thermal printer support (fallback to Adafruit_Thermal.py if not available)
+python-escpos
+
+# Note: The following are already included in Raspberry Pi OS or the repository:
+# - Adafruit_Thermal: Included as Adafruit_Thermal.py in this repository
+# - wraptext: Included as wraptext.py in this repository
+# - Standard library: time, signal, os, datetime, base64 (no installation needed)

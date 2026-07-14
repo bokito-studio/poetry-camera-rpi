@@ -1,0 +1,451 @@
+grep -n "SELECTED_FONT_PATH" main.py
+# takeFrom picamera2 examples: capture_jpeg.py 
+#!/usr/bin/python3
+
+# Capture a JPEG while still running in the preview mode. When you
+# capture to a file, the return value is the metadata for that image.
+
+import time, requests, signal, os, base64, random, glob
+
+from picamera2 import Picamera2, Preview
+from gpiozero import LED, Button
+from Adafruit_Thermal import *
+from wraptext import *
+from datetime import datetime
+from dotenv import load_dotenv
+import google.generativeai as genai
+from PIL import Image, ImageDraw, ImageFont
+
+# python-escpos 사용 시도, 실패 시 Adafruit_Thermal 사용
+try:
+    from escpos.printer import Serial
+    printer = Serial('/dev/serial0', baudrate=19200, timeout=5)
+    USE_ESCPOS = True
+    print("✅ python-escpos로 프린터 연결 성공")
+except ImportError:
+    print("❌ python-escpos가 설치되지 않음. Adafruit_Thermal로 대체 시도...")
+    #instantiate printer
+    baud_rate = 19200 # Set to 19200 for most thermal printers
+    printer = Adafruit_Thermal('/dev/serial0', baud_rate, timeout=5)
+    USE_ESCPOS = False
+    print("⚠️  Adafruit_Thermal 사용 (이미지 출력 제한적)")
+except Exception as e:
+    print(f"❌ 프린터 연결 실패: {e}")
+    # 일단 계속 진행, 프린터 없이도 동작하도록
+    printer = None
+    USE_ESCPOS = False
+
+#load API keys from .env
+load_dotenv()
+genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
+
+#instantiate camera
+picam2 = Picamera2()
+# start camera
+picam2.start()
+time.sleep(2) # warmup period since first few frames are often poor quality
+
+#instantiate buttons
+shutter_button = Button(16) # 셔터 버튼 GPIO16
+# power_button = Button(26, hold_time = 2) # 파워 버튼 미지정 - 주석 처리
+led = LED(26) # LED GPIO26
+
+# 프롬프트 설정
+# 시스템 프롬프트: AI 시인의 스타일과 제약사항을 정의 (한국어 시)
+system_prompt = """당신은 한국어 시를 쓰는 시인입니다. 우아하고 감정적으로 영향력 있는 한국어 시를 전문으로 합니다.
+미묘함을 사용하고 현대적인 구어체 스타일로 작성합니다.
+일상적인 한국어를 사용하되, 문학적인 기교를 사용합니다.
+시는 문학적이면서도 공감하고 이해하기 쉬워야 합니다.
+친밀하고 개인적인 진실에 집중하며, '진실', '시간', '침묵', '인생', '사랑', '평화', '전쟁', '증오', '행복' 같은 추상적이고 큰 단어를 직접적으로 사용하지 않습니다.
+대신 구체적이고 명확한 언어를 사용하여 그러한 아이디어를 말하지 않고 보여줘야 합니다.
+섬세하고 아름다운 한국어 시를 만드는 방법에 대해 신중하게 생각하세요.
+이것은 매우 중요하며, 지나치게 서투르거나 진부한 시는 피해야 합니다."""
+
+# 시 형식: 8줄 자유시 (한국어)
+poem_format = "8줄 자유시 (한국어)"
+
+
+#############################
+# CORE PHOTO-TO-POEM FUNCTION
+#############################
+def take_photo_and_print_poem():
+  # blink LED in a background thread
+  led.blink()
+
+  # Ensure the directory exists
+  image_path = '/home/pashiran/CamTest/images/image.jpg'
+  os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+  # Take photo & save it
+  metadata = picam2.capture_file(image_path)
+
+  # FOR DEBUGGING: print metadata
+  #print(metadata)
+
+  # Close camera -- commented out because this can only happen at end of program
+  # picam2.close()
+
+  # FOR DEBUGGING: note that image has been saved
+  print('----- SUCCESS: image saved locally')
+
+  print_header()
+
+  #########################
+  # Use Google Gemini API to analyze image and generate poem
+  #########################
+
+  # Load the image
+  img = Image.open(image_path)
+
+  # Create Gemini model (using gemini-2.5-flash for speed and quality balance)
+  model = genai.GenerativeModel('models/gemini-2.5-flash')
+
+  # Gemini용 프롬프트 생성 (이미지 분석 + 한국어 시 생성 통합)
+  prompt = f"""{system_prompt}
+
+제공된 이미지를 기반으로 다음 형식으로 한국어 시를 작성하세요: {poem_format}
+
+시는 이미지에서 보이는 세부 사항을 자연스럽게 통합해야 합니다.
+이미지에 대한 참조는 미묘하면서도 명확해야 합니다.
+이미지의 구체적인 아이디어와 세부 사항을 사용하여 독특하고 우아한 한국어 시에 집중하세요.
+어휘를 단순하게 유지하고 절제된 관점을 사용해야 합니다.
+분위기, 대기, 사물, 색상 및 흥미로운 세부 사항에 집중하세요.
+이것은 매우 중요합니다.
+
+한국어 시만 응답하고 다른 것은 응답하지 마세요."""
+
+  # 이미지로부터 시 생성
+  try:
+    response = model.generate_content([prompt, img])
+    poem = response.text
+    
+    print('--------POEM BELOW-------')
+    print(poem)
+    print('------------------')
+
+    print_poem(poem)
+  except Exception as e:
+    print(f'Error generating poem: {e}')
+    printer.println('Error: Could not generate poem')
+
+  print_footer()
+  led.off()
+  
+  # 이미지 파일 삭제 (저장 공간 절약 및 개인정보 보호)
+  try:
+    os.remove(image_path)
+    print(f'----- SUCCESS: image deleted from {image_path}')
+  except Exception as e:
+    print(f'----- WARNING: Could not delete image: {e}')
+
+  return
+
+
+#######################
+# This function is no longer needed with Gemini API
+# (kept for reference but not used)
+#######################
+def generate_prompt(image_description):
+  # This function is deprecated when using Gemini
+  # Gemini processes image and generates poem in one call
+  pass
+
+
+
+###########################
+# KOREAN TEXT IMAGE FUNCTIONS
+###########################
+
+def get_random_korean_font():
+    """랜덤하게 한글 폰트를 선택"""
+    font_base_path = './fonts/clova-all/'
+    
+    try:
+        # 모든 폰트 폴더 찾기
+        font_folders = [f for f in os.listdir(font_base_path) if os.path.isdir(os.path.join(font_base_path, f))]
+        
+        if not font_folders:
+            print("❌ fonts/clova-all/ 폴더에서 폰트를 찾을 수 없습니다.")
+            return None
+        
+        # 랜덤하게 폰트 폴더 선택
+        selected_font_folder = random.choice(font_folders)
+        font_folder_path = os.path.join(font_base_path, selected_font_folder)
+        
+        # 폰트 파일 찾기 (ttf, otf 확장자)
+        font_files = []
+        for ext in ['*.ttf', '*.otf', '*.TTF', '*.OTF']:
+            font_files.extend(glob.glob(os.path.join(font_folder_path, ext)))
+        
+        if font_files:
+            # 랜덤하게 폰트 파일 선택
+            selected_font_file = random.choice(font_files)
+            print(f"✅ 랜덤 폰트 선택: {selected_font_folder} - {os.path.basename(selected_font_file)}")
+            return selected_font_file
+        else:
+            print(f"⚠️  {selected_font_folder}에서 폰트 파일을 찾을 수 없습니다.")
+            return None
+            
+    except Exception as e:
+        print(f"❌ 폰트 선택 실패: {e}")
+        return None
+
+def create_korean_text_image(text, font_size=48, width=384):
+    """
+    한글 텍스트를 볼드 이미지로 변환
+    Args:
+        text: 출력할 한글 텍스트
+        font_size: 폰트 크기 (기본값: 48)
+        width: 이미지 너비 (프린터 너비에 맞춤)
+    Returns:
+        PIL Image 객체
+    """
+    # 랜덤 한글 폰트 선택
+    font_path = get_random_korean_font()
+    
+    # 폰트 로드
+    try:
+        if font_path:
+            font = ImageFont.truetype(font_path, font_size)
+        else:
+            font = ImageFont.load_default()
+            print("⚠️  기본 폰트 사용")
+    except Exception as e:
+        print(f"⚠️  폰트 로드 실패: {e} - 기본 폰트 사용")
+        font = ImageFont.load_default()
+
+    # 텍스트 크기 계산
+    try:
+        bbox = font.getbbox(text)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+    except AttributeError:
+        # 이전 버전 PIL 호환성
+        try:
+            text_width, text_height = font.getsize(text)
+        except:
+            text_width, text_height = 100, 20
+    
+    # 이미지 생성 (흰 배경)
+    height = max(text_height + 20, 40)  # 최소 높이 보장
+    img = Image.new('RGB', (width, height), 'white')
+    draw = ImageDraw.Draw(img)
+    
+    # 텍스트를 이미지 중앙에 그리기 (볼드 효과를 위해 여러 번 그리기)
+    x = max((width - text_width) // 2, 0)
+    y = max((height - text_height) // 2, 0)
+    
+    # 볼드 효과: 1픽셀씩 이동하며 여러 번 그리기
+    for dx in range(2):
+        for dy in range(2):
+            draw.text((x + dx, y + dy), text, font=font, fill='black')
+    
+    # 1비트 흑백으로 변환 (프린터용)
+    img = img.convert('1')
+    
+    return img
+
+def print_korean_text(text):
+    """한글 텍스트를 이미지로 변환하여 프린터로 출력"""
+    if not printer:
+        print(f"❌ 프린터가 연결되지 않음: {text}")
+        return
+        
+    try:
+        # 텍스트를 이미지로 변환
+        img = create_korean_text_image(text)
+        
+        # python-escpos 사용 시
+        if USE_ESCPOS and hasattr(printer, 'image'):
+            printer.image(img)
+            print(f"✅ 한글 이미지로 출력: {text}")
+        # Adafruit_Thermal 사용 시 (제한적)
+        elif hasattr(printer, 'printImage'):
+            printer.printImage(img, LaaT=True)
+            print(f"✅ 한글 이미지로 출력: {text}")
+        else:
+            # 일반 텍스트로 출력 (한글 깨짐)
+            if hasattr(printer, 'println'):
+                printer.println(text)
+            print(f"⚠️  텍스트로 출력 (한글 깨질 수 있음): {text}")
+            
+    except Exception as e:
+        print(f"❌ 한글 출력 실패: {text} - {e}")
+
+###########################
+# RECEIPT PRINTER FUNCTIONS
+###########################
+
+def print_poem(poem):
+    """시를 한글 이미지로 변환하여 출력"""
+    if not printer:
+        print("❌ 프린터가 연결되지 않음")
+        return
+        
+    try:
+        # 시를 줄별로 분할
+        lines = poem.strip().split('\n')
+        
+        # 좌측 정렬
+        if USE_ESCPOS and hasattr(printer, 'set'):
+            printer.set(align='left')
+        elif hasattr(printer, 'justify'):
+            printer.justify('L')
+        
+        # 각 줄을 한글 이미지로 출력
+        for line in lines:
+            line = line.strip()
+            if line:  # 빈 줄이 아닌 경우만 출력
+                print_korean_text(line)
+                time.sleep(0.2)  # 프린터 과부하 방지
+        
+        print("✅ 시 출력 완료")
+        
+    except Exception as e:
+        print(f"❌ 시 출력 실패: {e}")
+        # 백업: 기존 텍스트 방식으로 출력
+        try:
+            if hasattr(printer, 'println'):
+                printable_poem = wrap_text(poem, 32)
+                printer.justify('L')
+                printer.println(printable_poem)
+                print("⚠️  백업 텍스트 방식으로 출력됨")
+        except Exception as e2:
+            print(f"❌ 백업 출력도 실패: {e2}")
+
+
+# print date/time/location header
+def print_header():
+    """헤더 출력 (날짜/시간)"""
+    if not printer:
+        print("❌ 프린터가 연결되지 않음")
+        return
+        
+    try:
+        # Get current date+time -- will use for printing and file naming
+        now = datetime.now()
+
+        # 중앙 정렬
+        if USE_ESCPOS and hasattr(printer, 'set'):
+            printer.set(align='center')
+        elif hasattr(printer, 'justify'):
+            printer.justify('C')
+        
+        # 줄바꿈
+        if hasattr(printer, 'ln'):
+            printer.ln()
+        elif hasattr(printer, 'println'):
+            printer.println('\n')
+
+        # Format printed datetime 
+        date_string = now.strftime('%Y년 %m월 %d일')
+        time_string = now.strftime('%H:%M')
+        
+        # 날짜와 시간을 한글 이미지로 출력
+        print_korean_text(date_string)
+        print_korean_text(time_string)
+
+        # optical spacing adjustments
+        if hasattr(printer, 'setLineHeight'):
+            printer.setLineHeight(56)
+            printer.println()
+            printer.setLineHeight()
+        elif hasattr(printer, 'ln'):
+            printer.ln()
+        elif hasattr(printer, 'println'):
+            printer.println()
+
+        # 장식 문자는 일반 텍스트로 출력
+        if hasattr(printer, 'println'):
+            printer.println("`'. .'`'. .'`'. .'`'. .'`'. .'`")
+            printer.println("   `     `     `     `     `   ")
+        
+        print("✅ 헤더 출력 완료")
+        
+    except Exception as e:
+        print(f"❌ 헤더 출력 실패: {e}")
+
+
+# print footer
+def print_footer():
+    """푸터 출력"""
+    if not printer:
+        print("❌ 프린터가 연결되지 않음")
+        return
+        
+    try:
+        # 중앙 정렬
+        if USE_ESCPOS and hasattr(printer, 'set'):
+            printer.set(align='center')
+        elif hasattr(printer, 'justify'):
+            printer.justify('C')
+
+        # 장식 문자는 일반 텍스트로 출력
+        if hasattr(printer, 'println'):
+            printer.println("   .     .     .     .     .   ")
+            printer.println("_.` `._.` `._.` `._.` `._.` `._")
+            printer.println('\n')
+
+        # AI 안내 메시지를 한글 이미지로 출력
+        print_korean_text("이 시는 AI가 작성했습니다")
+        
+        if hasattr(printer, 'println'):
+            printer.println()
+        
+        # 웹사이트 정보는 영문 텍스트로 출력
+        if hasattr(printer, 'println'):
+            printer.println('Explore the archives at')
+            printer.println('poetry.camera')
+            printer.println('\n\n\n\n')
+        
+        print("✅ 푸터 출력 완료")
+        
+    except Exception as e:
+        print(f"❌ 푸터 출력 실패: {e}")
+
+
+##############
+# POWER BUTTON
+##############
+def shutdown():
+  print('shutdown button held for 2s')
+  print('shutting down now')
+  led.off()
+  os.system('sudo shutdown -h now')
+
+################################
+# For RPi debugging:
+# Handle Ctrl+C script termination gracefully
+# (Otherwise, it shuts down the entire Pi -- bad)
+#################################
+def handle_keyboard_interrupt(sig, frame):
+  print('Ctrl+C received, stopping script')
+  led.off()
+
+  #weird workaround I found from rpi forum to shut down script without crashing the pi
+  os.kill(os.getpid(), signal.SIGUSR1)
+
+signal.signal(signal.SIGINT, handle_keyboard_interrupt)
+
+
+#################
+# Button handlers
+#################
+def handle_pressed():
+  led.on()
+  led.off()
+  print("button pressed!")
+  take_photo_and_print_poem()
+
+def handle_held():
+  print("button held!")
+  shutdown()
+
+
+################################
+# LISTEN FOR BUTTON PRESS EVENTS
+################################
+shutter_button.when_pressed = take_photo_and_print_poem
+# power_button.when_held = shutdown  # 파워 버튼 미지정으로 주석 처리
+
+signal.pause()

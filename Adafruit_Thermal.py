@@ -1,36 +1,35 @@
 #*************************************************************************
-# This is a Python library for the Adafruit Thermal Printer.
-# Pick one up at --> http://www.adafruit.com/products/597
-# These printers use TTL serial to communicate, 2 pins are required.
-# IMPORTANT: On 3.3V systems (e.g. Raspberry Pi), use a 10K resistor on
-# the RX pin (TX on the printer, green wire), or simply leave unconnected.
+# Adafruit 감열 프린터용 파이썬 라이브러리입니다.
+# 제품 정보: http://www.adafruit.com/products/597
+# 이 프린터는 TTL 시리얼 통신을 사용하며, 2개의 핀이 필요합니다.
+# 중요: 3.3V 시스템(예: Raspberry Pi)에서는 RX 핀
+# (프린터의 TX, 초록색 선)에 10K 저항을 사용하거나 아예 연결하지 마세요.
 #
-# Adafruit invests time and resources providing this open source code.
-# Please support Adafruit and open-source hardware by purchasing products
-# from Adafruit!
+# Adafruit는 이 오픈소스 코드를 제공하기 위해 시간과 자원을 투자합니다.
+# Adafruit 제품을 구매하여 Adafruit와 오픈소스 하드웨어를 지원해 주세요.
 #
-# Written by Limor Fried/Ladyada for Adafruit Industries.
-# Python port by Phil Burgess for Adafruit Industries.
-# MIT license, all text above must be included in any redistribution.
+# Adafruit Industries를 위해 Limor Fried/Ladyada가 작성했습니다.
+# Phil Burgess가 Adafruit Industries용으로 파이썬 포팅을 했습니다.
+# MIT 라이선스이며, 재배포 시 위의 모든 문구를 포함해야 합니다.
 #*************************************************************************
 
-# This is pretty much a 1:1 direct Python port of the Adafruit_Thermal
-# library for Arduino.  All methods use the same naming conventions as the
-# Arduino library, with only slight changes in parameter behavior where
-# needed.  This should simplify porting existing Adafruit_Thermal-based
-# printer projects to Raspberry Pi, BeagleBone, etc.  See printertest.py
-# for an example.
+# 이것은 Arduino용 Adafruit_Thermal 라이브러리를 거의 1:1로
+# 직접 파이썬으로 옮긴 버전입니다. 모든 메서드는 Arduino 라이브러리와
+# 동일한 이름 규칙을 사용하며, 필요한 경우에만 매개변수 동작에 약간의
+# 차이가 있습니다. 덕분에 기존 Adafruit_Thermal 기반 프린터 프로젝트를
+# Raspberry Pi, BeagleBone 등으로 옮기기 쉬워집니다. 예시는 printertest.py를
+# 참고하세요.
 #
-# One significant change is the addition of the printImage() function,
-# which ties this to the Python Imaging Library and opens the door to a
-# lot of cool graphical stuff!
+# 큰 변화 중 하나는 printImage() 함수가 추가되었다는 점입니다.
+# 이 함수는 Python Imaging Library와 연결되어 다양한 그래픽 기능을
+# 활용할 수 있게 해줍니다.
 #
-# TO DO:
-# - Might use standard ConfigParser library to put thermal calibration
-#   settings in a global configuration file (rather than in the library).
-# - Make this use proper Python library installation procedure.
-# - Trap errors properly.  Some stuff just falls through right now.
-# - Add docstrings throughout!
+# 할 일:
+# - 표준 ConfigParser 라이브러리를 사용해 감열 프린터 보정 설정을
+#   라이브러리 내부가 아닌 전역 설정 파일에 둘 수 있음.
+# - 올바른 파이썬 라이브러리 설치 절차를 적용하기.
+# - 오류 처리를 더 정확히 하기. 현재는 일부가 그대로 통과함.
+# - 전반에 걸쳐 독스트링 추가하기.
 
 from serial import Serial
 import time
@@ -55,59 +54,56 @@ class Adafruit_Thermal(Serial):
 	writeToStdout   = False
 
 	def __init__(self, *args, **kwargs):
-		# NEW BEHAVIOR: if no parameters given, output is written
-		# to stdout, to be piped through 'lp -o raw' (old behavior
-		# was to use default port & baud rate).
+		# 새로운 동작: 매개변수가 없으면 출력은 stdout으로 기록되며
+		# 'lp -o raw'로 파이프할 수 있습니다
+		# (이전 동작은 기본 포트와 보드레이트를 사용하는 방식이었음).
 		baudrate = 19200
 		if len(args) == 0:
 			self.writeToStdout = True
 		if len(args) == 1:
-			# If only port is passed, use default baud rate.
+			# 포트만 전달되면 기본 보드레이트를 사용합니다.
 			args = [ args[0], baudrate ]
 		elif len(args) == 2:
-			# If both passed, use those values.
+			# 둘 다 전달되면 해당 값을 사용합니다.
 			baudrate = args[1]
 
-		# Firmware is assumed version 2.68.  Can override this
-		# with the 'firmware=X' argument, where X is the major
-		# version number * 100 + the minor version number (e.g.
-		# pass "firmware=264" for version 2.64.
+		# 펌웨어는 기본적으로 2.68 버전이라고 가정합니다.
+		# 'firmware=X' 인수로 덮어쓸 수 있으며,
+		# X는 메이저 버전 * 100 + 마이너 버전입니다
+		# (예: 2.64 버전은 "firmware=264").
 		self.firmwareVersion = kwargs.get('firmware', 268)
 
 		if self.writeToStdout is False:
-			# Calculate time to issue one byte to the printer.
-			# 11 bits (not 8) to accommodate idle, start and
-			# stop bits.  Idle time might be unnecessary, but
-			# erring on side of caution here.
+			# 프린터에 1바이트를 전송하는 데 걸리는 시간을 계산합니다.
+			# 유휴, 시작, 정지 비트를 고려해 8비트가 아닌 11비트를 사용합니다.
+			# 유휴 시간은 불필요할 수도 있지만, 여기서는 안전 쪽으로 잡습니다.
 			self.byteTime = 11.0 / float(baudrate)
 
 			Serial.__init__(self, *args, **kwargs)
 
-			# Remainder of this method was previously in begin()
+			# 이 메서드의 나머지 부분은 이전에는 begin()에 있었습니다.
 
-			# The printer can't start receiving data immediately
-			# upon power up -- it needs a moment to cold boot
-			# and initialize.  Allow at least 1/2 sec of uptime
-			# before printer can receive data.
+			# 프린터는 전원이 들어오자마자 바로 데이터를 받을 수 없습니다.
+			# 콜드 부팅과 초기화에 잠시 시간이 필요합니다.
+			# 데이터를 받기 전 최소 0.5초 정도의 기동 시간을 둡니다.
 			self.timeoutSet(0.5)
 
 			self.wake()
 			self.reset()
 
-			# Description of print settings from p. 23 of manual:
-			# ESC 7 n1 n2 n3 Setting Control Parameter Command
-			# Decimal: 27 55 n1 n2 n3
-			# max heating dots, heating time, heating interval
-			# n1 = 0-255 Max heat dots, Unit (8dots), Default: 7 (64 dots)
-			# n2 = 3-255 Heating time, Unit (10us), Default: 80 (800us)
-			# n3 = 0-255 Heating interval, Unit (10us), Default: 2 (20us)
-			# The more max heating dots, the more peak current
-			# will cost when printing, the faster printing speed.
-			# The max heating dots is 8*(n1+1).  The more heating
-			# time, the more density, but the slower printing
-			# speed.  If heating time is too short, blank page
-			# may occur.  The more heating interval, the more
-			# clear, but the slower printing speed.
+			# 매뉴얼 23페이지의 출력 설정 설명:
+			# ESC 7 n1 n2 n3 설정 제어 매개변수 명령
+			# 10진수: 27 55 n1 n2 n3
+			# 최대 가열 도트 수, 가열 시간, 가열 간격
+			# n1 = 0-255 최대 가열 도트 수, 단위(8도트), 기본값: 7(64도트)
+			# n2 = 3-255 가열 시간, 단위(10us), 기본값: 80(800us)
+			# n3 = 0-255 가열 간격, 단위(10us), 기본값: 2(20us)
+			# 최대 가열 도트 수가 많을수록 인쇄 시 순간 전류 소모가 커지고
+			# 인쇄 속도도 빨라집니다.
+			# 최대 가열 도트 수는 8*(n1+1)입니다. 가열 시간이 길수록
+			# 농도는 진해지지만 인쇄 속도는 느려집니다.
+			# 가열 시간이 너무 짧으면 빈 페이지가 나올 수 있습니다.
+			# 가열 간격이 길수록 더 선명하지만 인쇄 속도는 느려집니다.
 
 			heatTime = kwargs.get('heattime', self.defaultHeatTime)
 			self.writeBytes(
@@ -117,14 +113,14 @@ class Adafruit_Thermal(Serial):
 			  heatTime, # Lib default
 			  40)       # Heat interval
 
-			# Description of print density from p. 23 of manual:
-			# DC2 # n Set printing density
-			# Decimal: 18 35 n
-			# D4..D0 of n is used to set the printing density.
-			# Density is 50% + 5% * n(D4-D0) printing density.
-			# D7..D5 of n is used to set the printing break time.
-			# Break time is n(D7-D5)*250us.
-			# (Unsure of default values -- not documented)
+			# 매뉴얼 23페이지의 인쇄 농도 설명:
+			# DC2 # n 인쇄 농도 설정
+			# 10진수: 18 35 n
+			# n의 D4..D0 비트는 인쇄 농도를 설정하는 데 사용됩니다.
+			# 농도는 50% + 5% * n(D4-D0)입니다.
+			# n의 D7..D5 비트는 인쇄 중단 시간을 설정하는 데 사용됩니다.
+			# 중단 시간은 n(D7-D5)*250us입니다.
+			# (기본값은 문서화되어 있지 않아 확실하지 않음)
 
 			printDensity   = 10 # 100%
 			printBreakTime =  2 # 500 uS
@@ -136,47 +132,43 @@ class Adafruit_Thermal(Serial):
 			self.dotPrintTime = 0.03
 			self.dotFeedTime  = 0.0021
 		else:
-			self.reset() # Inits some vars
+			self.reset() # 일부 변수를 초기화함
 
-	# Because there's no flow control between the printer and computer,
-	# special care must be taken to avoid overrunning the printer's
-	# buffer.  Serial output is throttled based on serial speed as well
-	# as an estimate of the device's print and feed rates (relatively
-	# slow, being bound to moving parts and physical reality).  After
-	# an operation is issued to the printer (e.g. bitmap print), a
-	# timeout is set before which any other printer operations will be
-	# suspended.  This is generally more efficient than using a delay
-	# in that it allows the calling code to continue with other duties
-	# (e.g. receiving or decoding an image) while the printer
-	# physically completes the task.
+	# 프린터와 컴퓨터 사이에는 흐름 제어가 없으므로,
+	# 프린터 버퍼가 넘치지 않도록 특별히 주의해야 합니다.
+	# 시리얼 출력은 시리얼 속도와 장치의 인쇄/급지 속도 추정치에 따라
+	# 제한됩니다. 이 장치는 움직이는 부품의 물리적 한계 때문에 비교적 느립니다.
+	# 프린터에 작업을 보낸 뒤(예: 비트맵 인쇄)에는 일정 시간 동안 다른
+	# 프린터 작업을 중단시키는 타임아웃을 설정합니다.
+	# 이는 단순 지연을 쓰는 것보다 보통 더 효율적이며, 프린터가 실제 작업을
+	# 마치는 동안 호출 측 코드가 다른 일(예: 이미지 수신 또는 디코딩)을
+	# 계속할 수 있게 해줍니다.
 
-	# Sets estimated completion time for a just-issued task.
+	# 방금 보낸 작업의 예상 완료 시간을 설정합니다.
 	def timeoutSet(self, x):
 		self.resumeTime = time.time() + x
 
-	# Waits (if necessary) for the prior task to complete.
+	# 필요하면 이전 작업이 끝날 때까지 기다립니다.
 	def timeoutWait(self):
 		if self.writeToStdout is False:
 			while (time.time() - self.resumeTime) < 0: pass
 
-	# Printer performance may vary based on the power supply voltage,
-	# thickness of paper, phase of the moon and other seemingly random
-	# variables.  This method sets the times (in microseconds) for the
-	# paper to advance one vertical 'dot' when printing and feeding.
-	# For example, in the default initialized state, normal-sized text
-	# is 24 dots tall and the line spacing is 32 dots, so the time for
-	# one line to be issued is approximately 24 * print time + 8 * feed
-	# time.  The default print and feed times are based on a random
-	# test unit, but as stated above your reality may be influenced by
-	# many factors.  This lets you tweak the timing to avoid excessive
-	# delays and/or overrunning the printer buffer.
+	# 프린터 성능은 전원 전압, 종이 두께, 심지어 운까지 포함한 여러 변수에 따라
+	# 달라질 수 있습니다. 이 메서드는 인쇄와 급지 시 종이가 세로 1도트 이동하는
+	# 데 걸리는 시간(마이크로초 단위)을 설정합니다.
+	# 예를 들어 기본 초기화 상태에서는 일반 크기 텍스트 높이가 24도트이고
+	# 줄 간격이 32도트이므로, 한 줄을 출력하는 데 걸리는 시간은 대략
+	# 24 * 인쇄 시간 + 8 * 급지 시간입니다.
+	# 기본 인쇄/급지 시간은 임의의 테스트 기기를 기준으로 하지만,
+	# 앞서 말했듯 실제 환경은 많은 요인의 영향을 받습니다.
+	# 이 값을 조정해 과도한 지연이나 프린터 버퍼 초과를 피할 수 있습니다.
 	def setTimes(self, p, f):
-		# Units are in microseconds for
-		# compatibility with Arduino library
+		# Arduino 라이브러리와의 호환성을 위해
+		# 단위는 마이크로초를 사용합니다
 		self.dotPrintTime = p / 1000000.0
 		self.dotFeedTime  = f / 1000000.0
 
-	# 'Raw' byte-writing method
+	# 원시 바이트 쓰기 메서드
 	def writeBytes(self, *args):
 		if self.writeToStdout:
 			for arg in args:
@@ -187,7 +179,7 @@ class Adafruit_Thermal(Serial):
 				self.timeoutSet(len(args) * self.byteTime)
 				super(Adafruit_Thermal, self).write(bytes([arg]))
 
-	# Override write() method to keep track of paper feed.
+	# write() 메서드를 재정의해 용지 급지를 추적합니다.
 	def write(self, *data):
 		for i in range(len(data)):
 			c = data[i]
@@ -200,30 +192,30 @@ class Adafruit_Thermal(Serial):
 				d = self.byteTime
 				if ((c == '\n') or
 				    (self.column == self.maxColumn)):
-					# Newline or wrap
+					# 줄바꿈 또는 자동 개행
 					if self.prevByte == '\n':
-						# Feed line (blank)
+						# 빈 줄 급지
 						d += ((self.charHeight +
 						       self.lineSpacing) *
 						      self.dotFeedTime)
 					else:
-						# Text line
+						# 텍스트 줄
 						d += ((self.charHeight *
 						       self.dotPrintTime) +
 						      (self.lineSpacing *
 						       self.dotFeedTime))
 						self.column = 0
-						# Treat wrap as newline
-						# on next pass
+						# 다음 처리 단계에서는
+						# 줄바꿈으로 간주
 						c = '\n'
 				else:
 					self.column += 1
 				self.timeoutSet(d)
 				self.prevByte = c
 
-	# The bulk of this method was moved into __init__,
-	# but this is left here for compatibility with older
-	# code that might get ported directly from Arduino.
+	# 이 메서드의 대부분은 __init__으로 옮겨졌지만,
+	# Arduino 코드에서 직접 포팅되는 오래된 코드와의
+	# 호환성을 위해 여기 남겨둡니다.
 	def begin(self, heatTime=defaultHeatTime):
 		self.writeBytes(
 		  27,       # Esc
@@ -233,20 +225,20 @@ class Adafruit_Thermal(Serial):
 		  40)       # Heat interval
 
 	def reset(self):
-		self.writeBytes(27, 64) # Esc @ = init command
-		self.prevByte      = '\n' # Treat as if prior line is blank
+		self.writeBytes(27, 64) # Esc @ = 초기화 명령
+		self.prevByte      = '\n' # 이전 줄이 빈 줄이었다고 가정
 		self.column        =  0
 		self.maxColumn     = 32
 		self.charHeight    = 24
 		self.lineSpacing   =  6
 		self.barcodeHeight = 50
 		if self.firmwareVersion >= 264:
-			# Configure tab stops on recent printers
-			self.writeBytes(27, 68)         # Set tab stops
-			self.writeBytes( 4,  8, 12, 16) # every 4 columns,
-			self.writeBytes(20, 24, 28,  0) # 0 is end-of-list.
+			# 최신 프린터에서 탭 위치를 설정
+			self.writeBytes(27, 68)         # 탭 위치 설정
+			self.writeBytes( 4,  8, 12, 16) # 4칸마다,
+			self.writeBytes(20, 24, 28,  0) # 0은 목록의 끝
 
-	# Reset text formatting parameters.
+	# 텍스트 서식 관련 매개변수를 초기화합니다.
 	def setDefault(self):
 		self.online()
 		self.justify('L')
@@ -291,7 +283,7 @@ class Adafruit_Thermal(Serial):
 
 	def printBarcode(self, text, type):
 
-		newDict = { # UPC codes & values for firmwareVersion >= 264
+		newDict = { # firmwareVersion >= 264용 UPC 코드와 값
 			self.UPC_A   : 65,
 			self.UPC_E   : 66,
 			self.EAN13   : 67,
@@ -301,12 +293,12 @@ class Adafruit_Thermal(Serial):
 			self.CODABAR : 71,
 			self.CODE93  : 72,
 			self.CODE128 : 73,
-			self.I25     : -1, # NOT IN NEW FIRMWARE
+			self.I25     : -1, # 새 펌웨어에서는 지원하지 않음
 			self.CODEBAR : -1,
 			self.CODE11  : -1,
 			self.MSI     : -1
 		}
-		oldDict = { # UPC codes & values for firmwareVersion < 264
+		oldDict = { # firmwareVersion < 264용 UPC 코드와 값
 			self.UPC_A   :  0,
 			self.UPC_E   :  1,
 			self.EAN13   :  2,
@@ -318,7 +310,7 @@ class Adafruit_Thermal(Serial):
 			self.CODE128 :  8,
 			self.CODE11  :  9,
 			self.MSI     : 10,
-			self.ITF     : -1, # NOT IN OLD FIRMWARE
+			self.ITF     : -1, # 구형 펌웨어에서는 지원하지 않음
 			self.CODABAR : -1
 		}
 
@@ -327,16 +319,16 @@ class Adafruit_Thermal(Serial):
 		else:
 			n = oldDict[type]
 		if n == -1: return
-		self.feed(1) # Recent firmware requires this?
+		self.feed(1) # 최신 펌웨어는 이것이 필요할 수 있음
 		self.writeBytes(
-		  29,  72, 2, # Print label below barcode
-		  29, 119, 3, # Barcode width
-		  29, 107, n) # Barcode type
+		  29,  72, 2, # 바코드 아래에 라벨 출력
+		  29, 119, 3, # 바코드 너비
+		  29, 107, n) # 바코드 종류
 		self.timeoutWait()
 		self.timeoutSet((self.barcodeHeight + 40) * self.dotPrintTime)
-		# Print string
+		# 문자열 출력
 		if self.firmwareVersion >= 264:
-			# Recent firmware: write length byte + string sans NUL
+			# 최신 펌웨어: 길이 바이트 + NUL 없는 문자열 기록
 			n = len(text)
 			if n > 255: n = 255
 			if self.writeToStdout:
@@ -349,16 +341,16 @@ class Adafruit_Thermal(Serial):
 					super(Adafruit_Thermal,
 					  self).write(text[i].encode('utf-8', 'ignore'))
 		else:
-			# Older firmware: write string + NUL
+			# 구형 펌웨어: 문자열 + NUL 기록
 			if self.writeToStdout:
 				sys.stdout.write(text.encode('utf-8', 'ignore'))
 			else:
 				super(Adafruit_Thermal, self).write(text.encode('utf-8', 'ignore'))
 		self.prevByte = '\n'
 
-	# === Character commands ===
+	# === 문자 관련 명령 ===
 
-	INVERSE_MASK       = (1 << 1) # Not in 2.6.8 firmware (see inverseOn())
+	INVERSE_MASK       = (1 << 1) # 2.6.8 펌웨어에는 없음(inverseOn() 참고)
 	UPDOWN_MASK        = (1 << 2)
 	BOLD_MASK          = (1 << 3)
 	DOUBLE_HEIGHT_MASK = (1 << 4)
@@ -448,7 +440,7 @@ class Adafruit_Thermal(Serial):
 			pos = 0
 		self.writeBytes(0x1B, 0x61, pos)
 
-	# Feeds by the specified number of lines
+	# 지정한 줄 수만큼 급지합니다.
 	def feed(self, x=1):
 		if self.firmwareVersion >= 264:
 			self.writeBytes(27, 100, x)
@@ -457,13 +449,13 @@ class Adafruit_Thermal(Serial):
 			self.column   =    0
 
 		else:
-			# datasheet claims sending bytes 27, 100, <x> works,
-			# but it feeds much more than that.  So, manually:
+			# 데이터시트에는 27, 100, <x> 바이트 전송으로 동작한다고 되어 있지만
+			# 실제로는 그보다 훨씬 많이 급지됩니다. 그래서 수동으로 처리합니다:
 			while x > 0:
 				self.write('\n'.encode('cp437', 'ignore'))
 				x -= 1
 
-	# Feeds by the specified number of individual pixel rows
+	# 지정한 개수만큼 개별 픽셀 행을 급지합니다.
 	def feedRows(self, rows):
 		self.writeBytes(27, 74, rows)
 		self.timeoutSet(rows * dotFeedTime)
@@ -475,26 +467,26 @@ class Adafruit_Thermal(Serial):
 
 	def setSize(self, value):
 		c = value.upper()
-		if c == 'L':   # Large: double width and height
+		if c == 'L':   # Large: 가로/세로 2배
 			size            = 0x11
 			self.charHeight = 48
 			self.maxColumn  = 16
-		elif c == 'M': # Medium: double height
+		elif c == 'M': # Medium: 세로 2배
 			size            = 0x01
 			self.charHeight = 48
 			self.maxColumn  = 32
-		else:          # Small: standard width and height
+		else:          # Small: 기본 가로/세로 크기
 			size            = 0x00
 			self.charHeight = 24
 			self.maxColumn  = 32
 
 		self.writeBytes(29, 33, size)
-		prevByte = '\n' # Setting the size adds a linefeed
+		prevByte = '\n' # 크기 설정 시 줄바꿈이 추가됨
 
-	# Underlines of different weights can be produced:
-	# 0 - no underline
-	# 1 - normal underline
-	# 2 - thick underline
+	# 두께가 다른 밑줄을 만들 수 있습니다:
+	# 0 - 밑줄 없음
+	# 1 - 일반 밑줄
+	# 2 - 두꺼운 밑줄
 	def underlineOn(self, weight=1):
 		if weight > 2: weight = 2
 		self.writeBytes(27, 45, weight)
@@ -503,18 +495,17 @@ class Adafruit_Thermal(Serial):
 		self.writeBytes(27, 45, 0)
 
 	def printBitmap(self, w, h, bitmap, LaaT=False):
-		rowBytes = math.floor((w + 7) / 8)  # Round up to next byte boundary
+		rowBytes = math.floor((w + 7) / 8)  # 다음 바이트 경계까지 올림
 		if rowBytes >= 48:
-			rowBytesClipped = 48  # 384 pixels max width
+			rowBytesClipped = 48  # 최대 너비 384픽셀
 		else:
 			rowBytesClipped = rowBytes
 
-		# if LaaT (line-at-a-time) is True, print bitmaps
-		# scanline-at-a-time (rather than in chunks).
-		# This tends to make for much cleaner printing
-		# (no feed gaps) on large images...but has the
-		# opposite effect on small images that would fit
-		# in a single 'chunk', so use carefully!
+		# LaaT(line-at-a-time)가 True면 비트맵을
+		# 청크 단위가 아니라 스캔라인 단위로 출력합니다.
+		# 큰 이미지에서는 급지 틈이 없어 더 깔끔하게 인쇄되는 경향이 있지만,
+		# 하나의 청크에 들어갈 정도로 작은 이미지에는 반대 효과가 날 수 있으니
+		# 주의해서 사용하세요.
 		if LaaT: maxChunkHeight = 1
 		else:    maxChunkHeight = 255
 
@@ -524,7 +515,7 @@ class Adafruit_Thermal(Serial):
 			if chunkHeight > maxChunkHeight:
 				chunkHeight = maxChunkHeight
 
-			# Timeout wait happens here
+			# 여기서 타임아웃 대기가 발생합니다
 			self.writeBytes(18, 42, chunkHeight, rowBytesClipped)
 
 			for y in range(chunkHeight):
@@ -540,13 +531,12 @@ class Adafruit_Thermal(Serial):
 
 		self.prevByte = '\n'
 
-	# Print Image.  Requires Python Imaging Library.  This is
-	# specific to the Python port and not present in the Arduino
-	# library.  Image will be cropped to 384 pixels width if
-	# necessary, and converted to 1-bit w/diffusion dithering.
-	# For any other behavior (scale, B&W threshold, etc.), use
-	# the Imaging Library to perform such operations before
-	# passing the result to this function.
+	# 이미지를 출력합니다. Python Imaging Library가 필요합니다.
+	# 이 기능은 파이썬 포트 전용이며 Arduino 라이브러리에는 없습니다.
+	# 필요하면 이미지를 최대 384픽셀 너비로 잘라내고,
+	# 확산 디더링을 사용한 1비트 이미지로 변환합니다.
+	# 다른 동작(크기 조절, 흑백 임계값 등)이 필요하면,
+	# 이 함수에 전달하기 전에 Imaging Library에서 미리 처리하세요.
 	def printImage(self, image_file, LaaT=False):
 		from PIL import Image
 		image = Image.open(image_file)
@@ -577,21 +567,20 @@ class Adafruit_Thermal(Serial):
 
 		self.printBitmap(width, height, bitmap, LaaT)
 
-	# Take the printer offline. Print commands sent after this
-	# will be ignored until 'online' is called.
+	# 프린터를 오프라인 상태로 전환합니다.
+	# 이후의 출력 명령은 'online'이 호출될 때까지 무시됩니다.
 	def offline(self):
 		self.writeBytes(27, 61, 0)
 
-	# Take the printer online. Subsequent print commands will be obeyed.
+	# 프린터를 온라인 상태로 전환합니다. 이후 출력 명령이 처리됩니다.
 	def online(self):
 		self.writeBytes(27, 61, 1)
 
-	# Put the printer into a low-energy state immediately.
+	# 프린터를 즉시 저전력 상태로 전환합니다.
 	def sleep(self):
-		self.sleepAfter(1) # Can't be 0, that means "don't sleep"
+		self.sleepAfter(1) # 0은 "절전 안 함"을 의미하므로 사용할 수 없음
 
-	# Put the printer into a low-energy state after
-	# the given number of seconds.
+	# 지정한 초가 지난 뒤 프린터를 저전력 상태로 전환합니다.
 	def sleepAfter(self, seconds):
 		if self.firmwareVersion >= 264:
 			self.writeBytes(27, 56, seconds & 0xFF, seconds >> 8)
@@ -602,39 +591,39 @@ class Adafruit_Thermal(Serial):
 		self.timeoutSet(0)
 		self.writeBytes(255)
 		if self.firmwareVersion >= 264:
-			time.sleep(0.05)            # 50 ms
-			self.writeBytes(27, 118, 0) # Sleep off (important!)
+			time.sleep(0.05)            # 50밀리초
+			self.writeBytes(27, 118, 0) # 절전 해제(중요!)
 		else:
 			for i in range(10):
 				self.writeBytes(27)
 				self.timeoutSet(0.1)
 
-	# Empty method, included for compatibility
-	# with existing code ported from Arduino.
+	# 빈 메서드이며, Arduino에서 포팅된 기존 코드와의
+	# 호환성을 위해 포함되어 있습니다.
 	def listen(self):
 		pass
 
-	# Check the status of the paper using the printers self reporting
-	# ability. Doesn't match the datasheet...
-	# Returns True for paper, False for no paper.
+	# 프린터의 자체 보고 기능을 사용해 용지 상태를 확인합니다.
+	# 다만 데이터시트와 완전히 일치하지는 않습니다.
+	# 용지가 있으면 True, 없으면 False를 반환합니다.
 	def hasPaper(self):
 		if self.firmwareVersion >= 264:
 			self.writeBytes(27, 118, 0)
 		else:
 			self.writeBytes(29, 114, 0)
-		# Bit 2 of response seems to be paper status
+		# 응답의 2번 비트가 용지 상태로 보입니다
 		stat = ord(self.read(1)) & 0b00000100
-		# If set, we have paper; if clear, no paper
+		# 비트가 설정되어 있지 않으면 용지가 있는 것으로 판단
 		return stat == 0
 
 	def setLineHeight(self, val=32):
 		if val < 24: val = 24
 		self.lineSpacing = val - 24
 
-		# The printer doesn't take into account the current text
-		# height when setting line height, making this more akin
-		# to inter-line spacing.  Default line spacing is 32
-		# (char height of 24, line spacing of 8).
+		# 프린터는 줄 높이를 설정할 때 현재 텍스트 높이를 고려하지 않으므로,
+		# 이것은 줄 높이보다는 줄 간격 설정에 가깝습니다.
+		# 기본 줄 간격은 32이며
+		# (문자 높이 24, 줄 간격 8)입니다.
 		self.writeBytes(27, 51, val)
 
 	CHARSET_USA          =  0
@@ -655,78 +644,79 @@ class Adafruit_Thermal(Serial):
 	CHARSET_CROATIA      = 14
 	CHARSET_CHINA        = 15
 
-	# Alters some chars in ASCII 0x23-0x7E range; see datasheet
+	# ASCII 0x23-0x7E 범위의 일부 문자를 변경합니다. 데이터시트를 참고하세요.
 	def setCharset(self, val=0):
 		if val > 15: val = 15
 		self.writeBytes(27, 82, val)
 
-	CODEPAGE_CP437       =  0 # USA, Standard Europe
+	CODEPAGE_CP437       =  0 # 미국, 표준 유럽
 	CODEPAGE_KATAKANA    =  1
-	CODEPAGE_CP850       =  2 # Multilingual
-	CODEPAGE_CP860       =  3 # Portuguese
-	CODEPAGE_CP863       =  4 # Canadian-French
-	CODEPAGE_CP865       =  5 # Nordic
-	CODEPAGE_WCP1251     =  6 # Cyrillic
-	CODEPAGE_CP866       =  7 # Cyrillic #2
-	CODEPAGE_MIK         =  8 # Cyrillic/Bulgarian
-	CODEPAGE_CP755       =  9 # East Europe, Latvian 2
+	CODEPAGE_CP850       =  2 # 다국어
+	CODEPAGE_CP860       =  3 # 포르투갈어
+	CODEPAGE_CP863       =  4 # 캐나다 프랑스어
+	CODEPAGE_CP865       =  5 # 북유럽권
+	CODEPAGE_WCP1251     =  6 # 키릴 문자
+	CODEPAGE_CP866       =  7 # 키릴 문자 2
+	CODEPAGE_MIK         =  8 # 키릴/불가리아어
+	CODEPAGE_CP755       =  9 # 동유럽, 라트비아어 2
 	CODEPAGE_IRAN        = 10
-	CODEPAGE_CP862       = 15 # Hebrew
-	CODEPAGE_WCP1252     = 16 # Latin 1
-	CODEPAGE_WCP1253     = 17 # Greek
-	CODEPAGE_CP852       = 18 # Latin 2
-	CODEPAGE_CP858       = 19 # Multilingual Latin 1 + Euro
+	CODEPAGE_CP862       = 15 # 히브리어
+	CODEPAGE_WCP1252     = 16 # 라틴 1
+	CODEPAGE_WCP1253     = 17 # 그리스어
+	CODEPAGE_CP852       = 18 # 라틴 2
+	CODEPAGE_CP858       = 19 # 다국어 라틴 1 + 유로
 	CODEPAGE_IRAN2       = 20
 	CODEPAGE_LATVIAN     = 21
-	CODEPAGE_CP864       = 22 # Arabic
-	CODEPAGE_ISO_8859_1  = 23 # West Europe
-	CODEPAGE_CP737       = 24 # Greek
-	CODEPAGE_WCP1257     = 25 # Baltic
+	CODEPAGE_CP864       = 22 # 아랍어
+	CODEPAGE_ISO_8859_1  = 23 # 서유럽
+	CODEPAGE_CP737       = 24 # 그리스어
+	CODEPAGE_WCP1257     = 25 # 발트어권
 	CODEPAGE_THAI        = 26
-	CODEPAGE_CP720       = 27 # Arabic
+	CODEPAGE_CP720       = 27 # 아랍어
 	CODEPAGE_CP855       = 28
-	CODEPAGE_CP857       = 29 # Turkish
-	CODEPAGE_WCP1250     = 30 # Central Europe
+	CODEPAGE_CP857       = 29 # 터키어
+	CODEPAGE_WCP1250     = 30 # 중부 유럽
 	CODEPAGE_CP775       = 31
-	CODEPAGE_WCP1254     = 32 # Turkish
-	CODEPAGE_WCP1255     = 33 # Hebrew
-	CODEPAGE_WCP1256     = 34 # Arabic
-	CODEPAGE_WCP1258     = 35 # Vietnam
-	CODEPAGE_ISO_8859_2  = 36 # Latin 2
-	CODEPAGE_ISO_8859_3  = 37 # Latin 3
-	CODEPAGE_ISO_8859_4  = 38 # Baltic
-	CODEPAGE_ISO_8859_5  = 39 # Cyrillic
-	CODEPAGE_ISO_8859_6  = 40 # Arabic
-	CODEPAGE_ISO_8859_7  = 41 # Greek
-	CODEPAGE_ISO_8859_8  = 42 # Hebrew
-	CODEPAGE_ISO_8859_9  = 43 # Turkish
-	CODEPAGE_ISO_8859_15 = 44 # Latin 3
+	CODEPAGE_WCP1254     = 32 # 터키어
+	CODEPAGE_WCP1255     = 33 # 히브리어
+	CODEPAGE_WCP1256     = 34 # 아랍어
+	CODEPAGE_WCP1258     = 35 # 베트남어
+	CODEPAGE_ISO_8859_2  = 36 # 라틴 2
+	CODEPAGE_ISO_8859_3  = 37 # 라틴 3
+	CODEPAGE_ISO_8859_4  = 38 # 발트어권
+	CODEPAGE_ISO_8859_5  = 39 # 키릴 문자
+	CODEPAGE_ISO_8859_6  = 40 # 아랍어
+	CODEPAGE_ISO_8859_7  = 41 # 그리스어
+	CODEPAGE_ISO_8859_8  = 42 # 히브리어
+	CODEPAGE_ISO_8859_9  = 43 # 터키어
+	CODEPAGE_ISO_8859_15 = 44 # 라틴 3
 	CODEPAGE_THAI2       = 45
 	CODEPAGE_CP856       = 46
 	CODEPAGE_CP874       = 47
 
-	# Selects alt symbols for 'upper' ASCII values 0x80-0xFF
+	# 상위 ASCII 값 0x80-0xFF에 대한 대체 기호를 선택합니다.
 	def setCodePage(self, val=0):
 		if val > 47: val = 47
 		self.writeBytes(27, 116, val)
 
-	# Copied from Arduino lib for parity; may not work on all printers
+	# Arduino 라이브러리와의 동등성을 위해 가져온 코드이며,
+	# 모든 프린터에서 동작하지 않을 수 있습니다
 	def tab(self):
 		self.writeBytes(9)
 		self.column = (self.column + 4) & 0xFC
 
-	# Copied from Arduino lib for parity; may not work on all printers
+	# Arduino 라이브러리와의 동등성을 위해 가져온 코드이며,
+	# 모든 프린터에서 동작하지 않을 수 있습니다
 	def setCharSpacing(self, spacing):
 		self.writeBytes(27, 32, spacing)
 
-	# Overloading print() in Python pre-3.0 is dirty pool,
-	# but these are here to provide more direct compatibility
-	# with existing code written for the Arduino library.
+	# Python 3.0 이전 스타일의 print() 오버로딩은 다소 어색하지만,
+	# Arduino 라이브러리용 기존 코드와 더 직접적인 호환성을 제공하기 위해 둡니다.
 	def print(self, *args, **kwargs):
 		for arg in args:
 			self.write((str(arg)).encode('cp437', 'ignore'))
 
-	# For Arduino code compatibility again
+	# Arduino 코드와의 호환성을 위해 제공
 	def println(self, *args, **kwargs):
 		for arg in args:
 			self.write((str(arg)).encode('cp437', 'ignore'))
